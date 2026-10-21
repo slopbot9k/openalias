@@ -1,10 +1,13 @@
+import 'dart:convert';
+
 import 'package:openalias/openalias.dart';
 
 void main() {
   final recipient = selectOpenAliasRecipient(
     domain: normalizeOpenAlias('Alice@Example.com'),
     records: [
-      'oa1:xmr recipient_address=demo; recipient_name="Alice; Example";'
+      utf8.encode(
+          'oa1:xmr recipient_address=demo; recipient_name="Alice; Example";'),
     ],
     application: 'xmr',
     validateAddress: (address) => address == 'demo',

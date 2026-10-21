@@ -1,11 +1,15 @@
+import 'dart:convert';
+
 import 'package:test/test.dart';
 import 'package:openalias/openalias.dart';
+
+List<List<int>> bytes(List<String> records) => [...records.map(utf8.encode)];
 
 OpenAliasRecipient select(List<String> records) => selectOpenAliasRecipient(
       domain: 'alice.example',
       application: 'xmr',
       validateRecord: rejectPaymentId,
-      records: records,
+      records: bytes(records),
       validateAddress: (s) => s == 'valid' || s == 'second',
     );
 
@@ -263,7 +267,7 @@ OpenAliasRecipient selectWith(List<String> records,
     selectOpenAliasRecipient(
         domain: 'alice.example',
         application: application,
-        records: records,
+        records: bytes(records),
         validateAddress: (a) => a == 'valid' || a == 'second' || a == 'bitcoin',
         allowPaymentId: allowPaymentId,
         selection: selection);
@@ -352,9 +356,69 @@ void selectorTests() {
       expect(() => selectWith(['oa1:btc recipient_address=bitcoin;']),
           throwsA(isA<OpenAliasNoRecordException>()));
     });
-    test('rejects an invalid application name', () {
+    test('decodes only records of the application', () {
+      const invalid = [0xff, 0xfe];
       expect(
-          () => selectWith(const [], application: 'XMR'), throwsArgumentError);
+          selectOpenAliasRecipient(
+              domain: 'alice.example',
+              application: 'xmr',
+              records: [
+                [...utf8.encode('oa1:btc recipient_name='), ...invalid],
+                [...utf8.encode('oa1:xmrx '), ...invalid],
+                invalid,
+                utf8.encode('oa1:xmr recipient_address=valid;'),
+              ],
+              validateAddress: (a) => a == 'valid').address,
+          'valid');
+      try {
+        selectOpenAliasRecipient(
+            domain: 'alice.example',
+            application: 'xmr',
+            records: [
+              [...utf8.encode('oa1:xmr recipient_name='), ...invalid],
+            ],
+            validateAddress: (a) => true);
+        fail('expected an exception');
+      } on OpenAliasInvalidRecordException catch (e) {
+        expect(e.cause, isA<FormatException>());
+      }
+    });
+    test('checks the prefix on bytes', () {
+      expect(
+          selectWith(['oa1:xmr\trecipient_address=valid;']).address, 'valid');
+      for (final other in [
+        'oa1:xmrx recipient_address=valid;',
+        'oa1:XMR recipient_address=valid;',
+        ' oa1:xmr recipient_address=valid;',
+        'oa1:xmr;recipient_address=valid;',
+        'oa1: recipient_address=valid;',
+        'oa1:xmr\rrecipient_address=valid;',
+      ]) {
+        expect(() => selectWith([other]),
+            throwsA(isA<OpenAliasNoRecordException>()),
+            reason: other);
+      }
+      expect(() => selectWith(['oa1:xmr']),
+          throwsA(isA<OpenAliasInvalidAddressException>()));
+    });
+    test('rejects an invalid application name before decoding', () {
+      for (final application in ['XMR', '', '-xmr', 'xmr ', 'xm\u00e9']) {
+        expect(
+            () => selectOpenAliasRecipient(
+                domain: 'alice.example',
+                application: application,
+                records: [
+                  [...utf8.encode('oa1:xmr '), 0xff],
+                ],
+                validateAddress: (a) => true),
+            throwsArgumentError,
+            reason: application);
+      }
+      expect(
+          selectWith(const ['oa1:x_1- recipient_address=valid;'],
+                  application: 'x_1-')
+              .address,
+          'valid');
     });
   });
 }

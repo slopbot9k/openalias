@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Every deliberately reported OpenAlias parsing or selection failure.
 ///
 /// Messages are developer diagnostics; map the leaf types to user-facing text.
@@ -126,7 +128,6 @@ class OpenAliasRecipient {
       required this.record});
 }
 
-final _prefix = RegExp(r'oa1:([a-z0-9][a-z0-9_-]*)(?=[ \t]|$)');
 final _key = RegExp(r'^[A-Za-z0-9_]+$');
 const _standardKeys = {
   'recipient_address',
@@ -141,6 +142,35 @@ const _tab = 0x09, _space = 0x20, _quote = 0x22, _semi = 0x3b, _eq = 0x3d;
 const _backslash = 0x5c;
 
 bool _blank(int c) => c == _space || c == _tab;
+
+bool _tagChar(int c, {bool first = false}) =>
+    (c >= 0x61 && c <= 0x7a) ||
+    (c >= 0x30 && c <= 0x39) ||
+    (!first && (c == 0x5f || c == 0x2d));
+
+// End of the `oa1:<application>` tag in [units] (UTF-16 or UTF-8), or -1.
+// The tag is followed by a space, a tab or the end of the record.
+int _tagEnd(List<int> units, String? application) {
+  const oa1 = [0x6f, 0x61, 0x31, 0x3a];
+  final n = units.length;
+  if (n < 5) return -1;
+  for (var i = 0; i < 4; i++) {
+    if (units[i] != oa1[i]) return -1;
+  }
+  if (!_tagChar(units[4], first: true)) return -1;
+  var i = 5;
+  while (i < n && _tagChar(units[i])) {
+    i++;
+  }
+  if (i < n && !_blank(units[i])) return -1;
+  if (application != null) {
+    if (i - 4 != application.length) return -1;
+    for (var k = 0; k < application.length; k++) {
+      if (units[4 + k] != application.codeUnitAt(k)) return -1;
+    }
+  }
+  return i;
+}
 
 // C0/C1 controls, line separators, zero-width and bidi format characters.
 bool _forbidden(int c) =>
@@ -179,10 +209,8 @@ int _wrapEnd(String s, int open) {
 
 // OpenAlias spec: DNS libraries may escape the pair-ending ';' as '\;'.
 OpenAliasRecord? parseOpenAliasRecord(String record, {String? application}) {
-  final prefix = _prefix.matchAsPrefix(record);
-  if (prefix == null || (application != null && prefix[1] != application)) {
-    return null;
-  }
+  final tagEnd = _tagEnd(record.codeUnits, application);
+  if (tagEnd < 0) return null;
   if (record.length > 4096) {
     throw OpenAliasLimitExceededException('OpenAlias record too large',
         maximum: 4096, actual: record.length);
@@ -193,7 +221,7 @@ OpenAliasRecord? parseOpenAliasRecord(String record, {String? application}) {
   final n = record.length;
   final fields = <String, String>{};
   final seen = <String>{};
-  var i = prefix.end;
+  var i = tagEnd;
   while (true) {
     while (i < n) {
       final c = record.codeUnitAt(i);
@@ -277,7 +305,7 @@ OpenAliasRecord? parseOpenAliasRecord(String record, {String? application}) {
     }
     fields[key] = String.fromCharCodes(units.sublist(first, last));
   }
-  return OpenAliasRecord(prefix[1]!, fields);
+  return OpenAliasRecord(record.substring(4, tagEnd), fields);
 }
 
 String _trimBlanks(String s) {
@@ -296,10 +324,11 @@ enum OpenAliasSelection { uniqueAddress, first }
 
 typedef OpenAliasFieldValidator = void Function(OpenAliasRecord record);
 
-final _application = RegExp(r'^[a-z0-9][a-z0-9_-]*$');
-
 void _checkApplication(String application) {
-  if (!_application.hasMatch(application)) {
+  final units = application.codeUnits;
+  if (units.isEmpty ||
+      !_tagChar(units.first, first: true) ||
+      !units.every(_tagChar)) {
     throw ArgumentError.value(application, 'application');
   }
 }
@@ -308,13 +337,15 @@ bool _sameFields(OpenAliasRecord a, OpenAliasRecord b) =>
     a.fields.length == b.fields.length &&
     a.fields.entries.every((e) => b.fields[e.key] == e.value);
 
-/// Selects the recipient from decoded TXT [records] for [domain].
+/// Selects the recipient from raw TXT [records] for [domain], each record's
+/// character-strings already concatenated.
 ///
-/// Records of other applications are ignored. The caller is responsible for
-/// the origin of [records].
+/// Records of other applications are ignored without being decoded; a
+/// matching record that is not UTF-8 is an [OpenAliasInvalidRecordException].
+/// The caller is responsible for the origin of [records].
 OpenAliasRecipient selectOpenAliasRecipient(
     {required String domain,
-    required List<String> records,
+    required List<List<int>> records,
     required String application,
     required bool Function(String) validateAddress,
     OpenAliasFieldValidator? validateRecord,
@@ -326,9 +357,16 @@ OpenAliasRecipient selectOpenAliasRecipient(
         maximum: 64, actual: records.length);
   }
   final parsed = <OpenAliasRecord>[];
-  for (final text in records) {
-    final record = parseOpenAliasRecord(text, application: application);
-    if (record != null) parsed.add(record);
+  for (final bytes in records) {
+    if (_tagEnd(bytes, application) < 0) continue;
+    final String text;
+    try {
+      text = utf8.decode(bytes);
+    } on FormatException catch (e, st) {
+      throw OpenAliasInvalidRecordException('OpenAlias record is not UTF-8',
+          cause: e, causeStackTrace: st);
+    }
+    parsed.add(parseOpenAliasRecord(text, application: application)!);
   }
   final candidates = <String, OpenAliasRecord>{};
   for (final record in parsed) {
