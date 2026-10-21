@@ -13,41 +13,49 @@ sealed class OpenAliasException implements Exception {
   String toString() => '$runtimeType: $message';
 }
 
+/// The alias is not a valid ASCII DNS name.
 final class OpenAliasInvalidNameException extends OpenAliasException {
   const OpenAliasInvalidNameException(super.message,
       {super.cause, super.causeStackTrace});
 }
 
+/// A matching record is malformed or not UTF-8.
 final class OpenAliasInvalidRecordException extends OpenAliasException {
   const OpenAliasInvalidRecordException(super.message,
       {super.cause, super.causeStackTrace});
 }
 
+/// A matching record repeats a field key.
 final class OpenAliasDuplicateFieldException extends OpenAliasException {
   const OpenAliasDuplicateFieldException(super.message,
       {super.cause, super.causeStackTrace});
 }
 
+/// The only matching record has no address or `validateAddress` rejects it.
 final class OpenAliasInvalidAddressException extends OpenAliasException {
   const OpenAliasInvalidAddressException(super.message,
       {super.cause, super.causeStackTrace});
 }
 
+/// A record has `tx_payment_id` and `allowPaymentId` is false.
 final class OpenAliasUnsupportedFieldException extends OpenAliasException {
   const OpenAliasUnsupportedFieldException(super.message,
       {super.cause, super.causeStackTrace});
 }
 
+/// No record carries the `oa1:<application>` prefix.
 final class OpenAliasNoRecordException extends OpenAliasException {
   const OpenAliasNoRecordException(super.message,
       {super.cause, super.causeStackTrace});
 }
 
+/// Matching records name more than one address or disagree for one address.
 final class OpenAliasAmbiguousException extends OpenAliasException {
   const OpenAliasAmbiguousException(super.message,
       {super.cause, super.causeStackTrace});
 }
 
+/// A record over 4096 code units or more than 64 records.
 final class OpenAliasLimitExceededException extends OpenAliasException {
   final int? maximum;
   final int? actual;
@@ -104,6 +112,7 @@ String normalizeOpenAlias(String input) {
   return name;
 }
 
+/// One parsed `oa1:` record: its application tag and fields.
 class OpenAliasRecord {
   final String application;
 
@@ -116,6 +125,7 @@ class OpenAliasRecord {
   String? get paymentId => fields['tx_payment_id'];
 }
 
+/// The recipient chosen by [selectOpenAliasRecipient].
 class OpenAliasRecipient {
   final String domain;
   final String address;
@@ -320,8 +330,10 @@ String _trimBlanks(String s) {
   return s.substring(a, b);
 }
 
+/// Whether every matching record must agree or the first one wins.
 enum OpenAliasSelection { uniqueAddress, first }
 
+/// Extra record checks; throw to reject the record.
 typedef OpenAliasFieldValidator = void Function(OpenAliasRecord record);
 
 /// Whether [application] can follow `oa1:` in a record: lowercase letters,
