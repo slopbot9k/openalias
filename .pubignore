@@ -2,3 +2,6 @@
 pubspec.lock
 pubspec_overrides.yaml
 coverage/
+test/
+tool/
+.github/
