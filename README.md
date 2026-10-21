@@ -3,6 +3,8 @@
 Pure Dart parser and recipient selector for OpenAlias (`oa1:`) TXT records.
 No networking, no dependencies.
 
+## Usage
+
 ```dart
 import 'package:openalias/openalias.dart';
 
@@ -31,13 +33,16 @@ print(recipient.address);
 - Failures are final leaves of sealed `OpenAliasException`. Messages are
   diagnostics; map the types to your own text.
 
+## Trust model
+
 `checksum` and `address_signature` are carried but not verified.
 `recipient_name` and `tx_description` are untrusted display text. Fetching
 TXT records and deciding whether to trust them is the caller's job.
 
 ## Development
 
-`dart tool/check.dart` runs format, analyze, tests and `pub publish --dry-run`.
+`dart tool/check.dart`, in the repository, runs format, analyze, tests and
+`pub publish --dry-run`.
 
 ## License
 
