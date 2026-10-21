@@ -26,6 +26,8 @@ print(recipient.address);
   one valid address. `selection: first` stops at the first matching
   record; `tx_payment_id` is rejected unless `allowPaymentId` is set;
   `validateRecord` adds field checks. At most 64 records are accepted.
+- `isOpenAliasApplication` tells whether a tag may follow `oa1:`; the selector
+  throws `ArgumentError` for any other `application`.
 - Failures are final leaves of sealed `OpenAliasException`. Messages are
   diagnostics; map the types to your own text.
 

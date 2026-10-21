@@ -403,6 +403,8 @@ void selectorTests() {
     });
     test('rejects an invalid application name before decoding', () {
       for (final application in ['XMR', '', '-xmr', 'xmr ', 'xm\u00e9']) {
+        expect(isOpenAliasApplication(application), isFalse,
+            reason: application);
         expect(
             () => selectOpenAliasRecipient(
                 domain: 'alice.example',
@@ -414,6 +416,7 @@ void selectorTests() {
             throwsArgumentError,
             reason: application);
       }
+      expect(isOpenAliasApplication('x_1-'), isTrue);
       expect(
           selectWith(const ['oa1:x_1- recipient_address=valid;'],
                   application: 'x_1-')
